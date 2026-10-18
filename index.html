@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>hayabee29 - 年別ログ</title>
+    <title>hayabee29 - 年別ログ (自動同期)</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -22,9 +22,9 @@
         input[type="password"], select, textarea { width: 100%; border: 1px solid #ddd; padding: 10px; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
         textarea { height: 100px; resize: vertical; margin-top: 8px; }
         .btn-blue { background: var(--primary-blue); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; font-size: 14px; }
-        .btn-green { background: #4caf50; }
         .btn-gray { background: #888; }
         .auth-area { background: #f0f7ff; padding: 12px; border-radius: 8px; margin-bottom: 15px; }
+        .sync-status { font-size: 12px; color: #666; text-align: right; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -37,7 +37,7 @@
         
         <!-- 2020年からの年一覧表示エリア -->
         <div id="years-list-container">
-            <!-- JavaScriptで2020年〜のカードを動的に生成します -->
+            <!-- 動的生成 -->
         </div>
 
         <!-- 設定・編集エリア -->
@@ -56,16 +56,13 @@
                 <label style="font-size: 13px; font-weight: bold; display: block; margin-bottom: 4px;">📅 編集する年を選択</label>
                 <select id="target-year-select" onchange="loadSelectedYearContent()"></select>
 
-                <label style="font-size: 13px; font-weight: bold; display: block; margin-top: 12px; margin-bottom: 4px;">📝 内容を入力</label>
-                <textarea id="year-content-input" placeholder="この年の内容や予定を入力してください..."></textarea>
-
-                <button class="btn-blue" onclick="saveSelectedYearContent()">選択した年の内容を保存</button>
+                <label style="font-size: 13px; font-weight: bold; display: block; margin-top: 12px; margin-bottom: 4px;">📝 内容を入力 (自動保存されます)</label>
+                <textarea id="year-content-input" placeholder="この年の内容や予定を入力してください..." oninput="autoSaveContent()"></textarea>
+                <div id="sync-status" class="sync-status"></div>
             </div>
 
             <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
 
-            <button class="btn-blue btn-green" onclick="syncSaveAll()">クラウドへ保存 (送信)</button>
-            <button class="btn-blue" style="background:#0288d1;" onclick="syncLoadAll()">クラウドから読込 (受信)</button>
             <button class="btn-blue btn-gray" onclick="if(confirm('初期化しますか？')){localStorage.clear(); location.reload();}">データ全初期化</button>
         </div>
 
@@ -78,15 +75,22 @@
         const START_YEAR = 2020;
         const END_YEAR = 2035;
         let yearData = {};
+        let saveTimeout = null;
 
-        // ローカルストレージからデータをロード
+        // 起動時にローカルデータを読み込んでから、自動でクラウドから最新を受信
+        window.onload = async () => {
+            loadLocalData();
+            renderYearsList();
+            initYearSelect();
+            await autoLoadFromCloud();
+        };
+
         function loadLocalData() {
             for (let y = START_YEAR; y <= END_YEAR; y++) {
                 yearData[y] = localStorage.getItem(`year_text_${y}`) || "";
             }
         }
 
-        // 年別リストの描画
         function renderYearsList() {
             const container = document.getElementById('years-list-container');
             container.innerHTML = "";
@@ -107,7 +111,6 @@
             }
         }
 
-        // 年選択ドロップダウンの初期化
         function initYearSelect() {
             const select = document.getElementById('target-year-select');
             select.innerHTML = "";
@@ -123,7 +126,6 @@
             loadSelectedYearContent();
         }
 
-        // パスワード認証
         function verifyPassword() {
             const pass = document.getElementById('settings-password').value;
             if (pass === ADMIN_PASSWORD) {
@@ -135,14 +137,13 @@
             }
         }
 
-        // 選択された年の内容を入力エリアにセット
         function loadSelectedYearContent() {
             const y = document.getElementById('target-year-select').value;
             document.getElementById('year-content-input').value = yearData[y] || "";
         }
 
-        // 選択された年の内容を保存
-        function saveSelectedYearContent() {
+        // 文字を入力するたびに自動保存（少し時間を置いて連続送信を防ぐ仕組み）
+        function autoSaveContent() {
             const y = document.getElementById('target-year-select').value;
             const text = document.getElementById('year-content-input').value;
 
@@ -150,26 +151,25 @@
             localStorage.setItem(`year_text_${y}`, text);
             renderYearsList();
 
-            // 該当する年のカードへスムーズスクロール
-            document.getElementById(`card-year-${y}`).scrollIntoView({ behavior: 'smooth' });
-            alert(`${y}年の内容を保存しました！`);
+            document.getElementById('sync-status').innerText = "保存中...";
+
+            // 最後に文字を入力してから1秒後に自動でクラウドへ送信
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                try {
+                    await fetch(API_URL, { 
+                        method: 'POST', 
+                        body: JSON.stringify({ yearData: yearData }) 
+                    });
+                    document.getElementById('sync-status').innerText = "自動保存しました";
+                } catch (e) {
+                    document.getElementById('sync-status').innerText = "保存に失敗しました";
+                }
+            }, 1000);
         }
 
-        // クラウドへ一括送信
-        async function syncSaveAll() {
-            try {
-                await fetch(API_URL, { 
-                    method: 'POST', 
-                    body: JSON.stringify({ yearData: yearData }) 
-                });
-                alert("全年のデータをクラウドに保存しました！");
-            } catch (e) { 
-                alert("クラウド保存に失敗しました。"); 
-            }
-        }
-
-        // クラウドから一括受信
-        async function syncLoadAll() {
+        // 起動時に自動でクラウドから最新データを取得
+        async function autoLoadFromCloud() {
             try {
                 const res = await fetch(API_URL);
                 const data = await res.json();
@@ -180,22 +180,15 @@
                     }
                     renderYearsList();
                     loadSelectedYearContent();
-                    alert("クラウドから最新データを読み込みました！");
                 }
-            } catch (e) { 
-                alert("クラウドからの読込に失敗しました。"); 
+            } catch (e) {
+                // オフライン時などはエラーを無視してローカルデータで動かす
             }
         }
 
         function escapeHtml(str) {
             return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
-
-        window.onload = () => {
-            loadLocalData();
-            renderYearsList();
-            initYearSelect();
-        };
     </script>
 </body>
 </html>
