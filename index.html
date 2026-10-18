@@ -22,7 +22,6 @@
         input[type="password"], select, textarea { width: 100%; border: 1px solid #ddd; padding: 10px; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
         textarea { height: 100px; resize: vertical; margin-top: 8px; }
         .btn-blue { background: var(--primary-blue); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; font-size: 14px; }
-        .btn-gray { background: #888; }
         .auth-area { background: #f0f7ff; padding: 12px; border-radius: 8px; margin-bottom: 15px; }
         .sync-status { font-size: 12px; color: #666; text-align: right; margin-top: 5px; }
     </style>
@@ -60,10 +59,6 @@
                 <textarea id="year-content-input" placeholder="この年の内容や予定を入力してください..." oninput="autoSaveContent()"></textarea>
                 <div id="sync-status" class="sync-status"></div>
             </div>
-
-            <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
-
-            <button class="btn-blue btn-gray" onclick="if(confirm('初期化しますか？')){localStorage.clear(); location.reload();}">データ全初期化</button>
         </div>
 
     </div>
@@ -77,7 +72,6 @@
         let yearData = {};
         let saveTimeout = null;
 
-        // 起動時にローカルデータを読み込んでから、自動でクラウドから最新を受信
         window.onload = async () => {
             loadLocalData();
             renderYearsList();
@@ -142,7 +136,6 @@
             document.getElementById('year-content-input').value = yearData[y] || "";
         }
 
-        // 文字を入力するたびに自動保存（少し時間を置いて連続送信を防ぐ仕組み）
         function autoSaveContent() {
             const y = document.getElementById('target-year-select').value;
             const text = document.getElementById('year-content-input').value;
@@ -153,7 +146,6 @@
 
             document.getElementById('sync-status').innerText = "保存中...";
 
-            // 最後に文字を入力してから1秒後に自動でクラウドへ送信
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
                 try {
@@ -168,7 +160,6 @@
             }, 1000);
         }
 
-        // 起動時に自動でクラウドから最新データを取得
         async function autoLoadFromCloud() {
             try {
                 const res = await fetch(API_URL);
@@ -182,7 +173,7 @@
                     loadSelectedYearContent();
                 }
             } catch (e) {
-                // オフライン時などはエラーを無視してローカルデータで動かす
+                // オフライン時はローカルデータで動作
             }
         }
 
